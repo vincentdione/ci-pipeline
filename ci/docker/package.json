@@ -1,0 +1,20 @@
+{
+  "name": "docker",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "lance-keycloak": "docker-compose -f keycloak.yaml -p keycloak up -d --build",
+    "lance-sonar": "docker-compose -f sonarqube.yaml -p sonarqube up -d --build",
+    "lance-concourse": "docker-compose -f concourse.yaml -p concourse up -d --build",
+    "stop-keycloak": "docker-compose -f keycloak.yaml -p keycloak down --remove-orphans",
+    "stop-sonar": "docker-compose -f sonarqube.yaml -p sonarqube down --remove-orphans",
+    "stop-concourse": "docker-compose -f concourse.yaml -p concourse down --remove-orphans",
+    "stop-stack": "npm run stop-keycloak && npm run stop-sonar && npm run stop-concourse",
+    "stack": "npm run lance-keycloak && npm run lance-sonar && npm run lance-concourse"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}

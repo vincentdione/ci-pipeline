@@ -1,0 +1,231 @@
+
+registries-ovd: &registries-ovd
+  username: ((composants.docker_username))
+  password: ((composants.docker_token))
+  repository: ((composants.docker_repo))
+
+
+resources:
+
+  - name: git-ihm-angular
+    type: git
+    source:
+      uri: https://github.com/vincentdione/coreAngular.git
+      branch: master
+      username: ((github.username))
+      password: ((github.token))
+    webhook_token: token-du-webhook
+
+  - name: version-front
+    type: semver
+    icon: tag
+    source:
+      driver: git
+      uri: https://github.com/vincentdione/coreAngular.git
+      branch: master
+      username: ((github.username))
+      password: ((github.token))
+      file: version.txt
+      commit_message: "[skip ci] Montée de version %version%"
+
+
+  - name: artifacts
+    type: git
+    source:
+      uri: https://github.com/vincentdione/artifact.git
+      branch: main
+      username: ((github.username))
+      password: ((github.token))
+    webhook_token: token-du-webhook
+
+
+  - name: videko_ihm_image
+    type: registry-image
+    icon: docker
+    source:
+      repository: docker
+      <<: *registries-ovd
+
+
+jobs:
+
+  - name: installation_du_pipeline
+    public: true
+    plan:
+      - get: git-ci
+        trigger: true
+      - set_pipeline: my_app_pipeline
+        file: git-ci/ci/pipeline.yaml
+        var_files: [git-ci/ci/pipeline-vars.yaml]
+
+  # - name: analyse_sonar
+  #   public: true
+  #   plan:
+  #     - get: artifacts
+  #       trigger: true
+  #     - get: git-ci
+  #       trigger: true
+  #     - task: run-sonar-scanner
+  #       privileged: true
+  #       file: artifacts/tasks/sonar/task.yaml
+  #       input_mapping:
+  #         git-sources: git-ci
+  #       params:
+  #         SONAR_PROJECT_KEY: ((sonar.sonar_projectkey))
+  #         SONAR_SOURCES: src
+  #         SONAR_HOST_URL: ((sonar.sonar_url))
+  #         SONAR_LOGIN: ((sonar.sonar_login))
+
+
+      # - task: build-image
+      #   privileged: true
+      #   file: artifacts/tasks/task.yaml
+      #   params:
+      #     BUILD_ARG_QUARKUS_PROFILE: dev
+      #     BUILD_ARG_APP_NAME: my-quarkus-app-1
+      #     BUILD_ARG_VERSION: version-backend/version
+      #   input_mapping:
+      #     git-sources: git-ci
+
+
+
+  - name: construit_livrables_angular_avec_helm
+    public: true
+    plan:
+      - in_parallel:
+          - get: git-ihm-angular
+            trigger: true
+          - get: version-front
+            trigger: true
+          - get: artifacts
+            trigger: true
+      - in_parallel:
+          - load_var: var-version-front
+            file: version-front/version
+
+          - task: execution_tu
+            config:
+              platform: linux
+              image_resource:
+                type: registry-image
+                source:
+                  repository: node
+                  tag: 20-alpine
+              inputs:
+                - name: git-ihm-angular
+                - name: version-front
+              
+              outputs:
+                - name: git-ihm-angular  
+              caches:
+                - path: /root/.npm
+              run:
+                user: root
+                path: /bin/sh
+                args:
+                  - -uxc
+                  - |
+                    version=$(cat "version-front/version")
+                    cd git-ihm-angular 
+                    export NG_CLI_ANALYTICS=false
+                    npm version ${version} --no-git-tag-version
+                    
+                    anomalie=false
+                    npm run test
+                    if [ $? -gt 0 ]; then
+                      anomalie=true
+                    fi
+
+                    npm install -g npm-audit-html@beta
+                    npm audit --only=prod --json | npm-audit-html --output coverage/npm-audit.html
+                    if [ $? -gt 0 ]; then
+                      anomalie=true
+                    fi
+
+                    # npm run depchecknpm
+                    # if [ $? -gt 0 ]; then
+                    #   anomalie=true
+                    # fi
+
+                    RESULTAT=$?
+                    cd -
+
+                    if $anomalie; then
+                      exit 1
+                    fi
+
+                    exit $RESULTAT
+
+
+          - task: execution_sonar
+            config:
+              platform: linux
+              image_resource:
+                type: registry-image
+                source:
+                  repository: sonarsource/sonar-scanner-cli
+                  tag: 11.0
+              inputs:
+                - name: git-ihm-angular
+                - name: version-front
+              outputs:
+                - name: git-ihm-angular  
+              caches:
+                - path: /root/.npm
+              run:
+                user: root
+                path: /bin/sh
+                args:
+                  - -uxc
+                  - |
+                    version=$(cat "version-front/version")
+
+                    cd git-ihm-angular
+                    
+                    anomalie=false
+
+                    sed -i "s/sonar.projectVersion=local/sonar.projectVersion=${version}/g" sonar-project.properties
+                    sonar-scanner -Dproject.settings=sonar-project.properties
+                    if [ $? -gt 0 ]; then
+                      anomalie=true
+                    fi
+
+                    if $anomalie; then
+                      exit 1
+                    fi
+
+
+
+
+  - name: incremente_version_front
+    public: true
+    plan:
+      - get: version-front
+        trigger: true
+        passed:
+          - construit_livrables_angular_avec_helm
+      - put: version-front
+        params:
+          bump: patch
+
+  #- name: deploy_to_k8s
+  #  public: true
+  #  plan:
+  #    - get: git-ci
+  #      trigger: true
+  #      passed:
+  #        - construit_livrables_backend_avec_helm
+  #    - task: deploy-k8s
+  #      privileged: true
+  #      file: artifacts/tasks/deploy-k8s/task.yaml
+
+groups:
+  - name: pipeline-backend
+    jobs:
+      # - analyse_sonar
+      - construit_livrables_angular_avec_helm
+      #      - deploy_to_k8s
+      - incremente_version_front
+  - name: ci
+    jobs:
+      - installation_du_pipeline
