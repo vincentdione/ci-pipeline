@@ -38,13 +38,23 @@ resources:
       password: ((github.token))
     webhook_token: token-du-webhook
 
-
-  - name: videko_ihm_image
-    type: registry-image
-    icon: docker
+  
+  - name: git-ci
+    type: git
     source:
-      repository: docker
-      <<: *registries-ovd
+      uri: https://github.com/vincentdione/ci-pipeline.git
+      branch: master
+      username: ((github.username))
+      password: ((github.token))
+    webhook_token: token-du-webhook
+
+
+  # - name: videko_ihm_image
+  #   type: registry-image
+  #   icon: docker
+  #   source:
+  #     repository: docker
+  #     <<: *registries-ovd
 
 
 jobs:
