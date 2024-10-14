@@ -1,0 +1,30 @@
+platform: linux
+image_resource:
+  type: registry-image
+  source:
+    repository: owasp/dependency-check-action
+    tag: latest
+inputs:
+  - name: sources
+  - name: image
+outputs:
+  - name: resultat-owasp
+params:
+  PROJECT_NAME:
+  SUPPRESSION_FILE:
+run:
+  user: root
+  path: /bin/sh
+  args:
+    - -exc
+    - |
+      mkdir input
+      cp -r sources/node_modules input/node_modules
+      cp -r image/image.tar input/images.tar
+
+      suppressions=""
+      if [ ! -z ${SUPPRESSION_FILE} ]  && [ "${SUPPRESSION_FILE}" != "null" ]  && [ "${SUPPRESSION_FILE}" != "" ];then
+        suppressions="--suppression $SUPPRESSION_FILE";
+      fi
+
+      /usr/share/dependency-check/bin/dependency-check.sh --scan input --format ALL --project "$PROJECT" --out resultat-owasp $suppressions --disableOssIndex --disableCentral --noupdate

@@ -12,7 +12,12 @@
     "stop-sonar": "docker-compose -f sonarqube.yaml -p sonarqube down --remove-orphans",
     "stop-concourse": "docker-compose -f concourse.yaml -p concourse down --remove-orphans",
     "stop-stack": "npm run stop-keycloak && npm run stop-sonar && npm run stop-concourse",
-    "stack": "npm run lance-keycloak && npm run lance-sonar && npm run lance-concourse"
+    "stack": "npm run lance-keycloak && npm run lance-sonar && npm run lance-concourse",
+    "lance": "docker-compose up -d --build",
+    "all": "npm run lance",
+    "lance-all": "docker-compose -f concourse.yaml -f sonarqube.yaml -f keycloak.yaml -p stack up -d --build",
+    "stop-all": "docker-compose -f concourse.yaml -f sonarqube.yaml -f keycloak.yaml -p stack down --remove-orphans"
+ 
   },
   "keywords": [],
   "author": "",

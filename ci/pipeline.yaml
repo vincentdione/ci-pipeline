@@ -38,6 +38,7 @@ resources:
       password: ((github.token))
     webhook_token: token-du-webhook
 
+
   
   - name: git-ci
     type: git
@@ -49,12 +50,12 @@ resources:
     webhook_token: token-du-webhook
 
 
-  # - name: videko_ihm_image
-  #   type: registry-image
-  #   icon: docker
-  #   source:
-  #     repository: docker
-  #     <<: *registries-ovd
+  - name: videko_ihm_image
+    type: registry-image
+    icon: docker
+    source:
+      repository: docker
+      <<: *registries-ovd
 
 
 jobs:
@@ -115,60 +116,82 @@ jobs:
 
           - task: execution_tu
             config:
-              platform: linux
-              image_resource:
-                type: registry-image
-                source:
-                  repository: node
-                  tag: 20-alpine
-              inputs:
-                - name: git-ihm-angular
-                - name: version-front
-              
-              outputs:
-                - name: git-ihm-angular  
-              caches:
-                - path: /root/.npm
-              run:
-                user: root
-                path: /bin/sh
-                args:
-                  - -uxc
-                  - |
-                    version=$(cat "version-front/version")
-                    cd git-ihm-angular 
-                    export NG_CLI_ANALYTICS=false
-                    npm version ${version} --no-git-tag-version
-                    
-                    anomalie=false
-                    npm run test
-                    if [ $? -gt 0 ]; then
-                      anomalie=true
-                    fi
+                  platform: linux
+                  image_resource:
+                    type: registry-image
+                    source:
+                      repository: node
+                      tag: 20-alpine
+                  inputs:
+                    - name: git-ihm-angular
+                    - name: version-front
+                  
+                  outputs:
+                    - name: git-ihm-angular  
+                  caches:
+                    - path: /root/.npm
+                  run:
+                    user: root
+                    path: /bin/sh
+                    args:
+                      - -uxc
+                      - |
+                        version=$(cat "version-front/version")
+                        cd git-ihm-angular 
+                        export NG_CLI_ANALYTICS=false
+                        npm version ${version} --no-git-tag-version
+                        
+                        anomalie=false
+                        npm install --save-dev jest
+                        npm run test
+                        if [ $? -gt 0 ]; then
+                          anomalie=true
+                        fi
 
-                    npm install -g npm-audit-html@beta
-                    npm audit --only=prod --json | npm-audit-html --output coverage/npm-audit.html
-                    if [ $? -gt 0 ]; then
-                      anomalie=true
-                    fi
+                        npm install -g npm-audit-html@beta
+                        npm audit --only=prod --json | npm-audit-html --output coverage/npm-audit.html
+                        if [ $? -gt 0 ]; then
+                          anomalie=true
+                        fi
 
-                    # npm run depchecknpm
-                    # if [ $? -gt 0 ]; then
-                    #   anomalie=true
-                    # fi
+                        # npm run depchecknpm
+                        # if [ $? -gt 0 ]; then
+                        #   anomalie=true
+                        # fi
 
-                    RESULTAT=$?
-                    cd -
+                        RESULTAT=$?
+                        cd ..
+                        cp -R  git-ihm-angular/. videko-build-ihm
+                        cp git-ihm-angular/Dockerfile  videko-build-ihm
+                        ls videko-build-ihm
 
-                    if $anomalie; then
-                      exit 1
-                    fi
+                        exit $RESULTAT
 
-                    exit $RESULTAT
+      - in_parallel: 
+          - task: fabrique-et-constuit-image-angular
+            privileged: true
+            file: artifacts/tasks/task.yaml
+            params:
+                BUILD_ARG_APP_NAME: videko-ihm-angular
+                BUILD_ARG_VERSION: ((.:var-version-front))
+            input_mapping:
+                git-sources: videko-build-ihm
+            output_mapping:
+                image: standalone
 
 
-          - task: execution_sonar
-            config:
+      - task: analyse-dependency-check
+        file: git-ci/ci/tasks/owasp/analyse-dependency-check.yaml
+        input_mapping:
+          sources: videko-build-ihm
+          image: image
+        output_mapping:
+          resultat-owasp: resultat-owasp
+        params:
+          PROJECT_NAME: videko-ihm
+
+      - task: execution_sonar
+        config:
               platform: linux
               image_resource:
                 type: registry-image
@@ -204,7 +227,10 @@ jobs:
                       exit 1
                     fi
 
-
+      - put: videko_ihm_image
+        params:
+            image: standalone/image.tar
+            version: ((.:var-version-front))
 
 
   - name: incremente_version_front
@@ -230,7 +256,7 @@ jobs:
   #      file: artifacts/tasks/deploy-k8s/task.yaml
 
 groups:
-  - name: pipeline-backend
+  - name: pipeline-front
     jobs:
       # - analyse_sonar
       - construit_livrables_angular_avec_helm
